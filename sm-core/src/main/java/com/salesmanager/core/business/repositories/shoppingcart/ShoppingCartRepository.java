@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import com.salesmanager.core.model.shoppingcart.ShoppingCart;
+import com.salesmanager.core.model.shoppingcart.ShoppingCartType;
+
 public interface ShoppingCartRepository extends JpaRepository<ShoppingCart, Long> {
 
 	@Query("select c from ShoppingCart c left join fetch c.lineItems cl left join fetch cl.attributes cla join fetch c.merchantStore cm where c.id = ?1")
@@ -22,5 +24,8 @@ public interface ShoppingCartRepository extends JpaRepository<ShoppingCart, Long
 	
 	@Query("select c from ShoppingCart c left join fetch c.lineItems cl left join fetch cl.attributes cla join fetch c.merchantStore cm where c.customerId = ?1")
 	List<ShoppingCart> findByCustomer(Long customerId);
-	
+
+	@Query("select c from ShoppingCart c left join fetch c.lineItems cl left join fetch cl.attributes cla join fetch c.merchantStore cm where c.customerId = ?1 and c.type = ?2")
+	List<ShoppingCart> findByCustomerAndType(Long customerId, ShoppingCartType type);
+
 }

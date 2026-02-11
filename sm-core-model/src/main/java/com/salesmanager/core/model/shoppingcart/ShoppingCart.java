@@ -12,6 +12,8 @@ import javax.persistence.Column;
 import javax.persistence.Embedded;
 import javax.persistence.Entity;
 import javax.persistence.EntityListeners;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
 import javax.persistence.FetchType;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
@@ -42,7 +44,7 @@ import com.salesmanager.core.model.merchant.MerchantStore;
  */
 @Entity
 @EntityListeners(value = AuditListener.class)
-@Table(name = "SHOPPING_CART", indexes= { @Index(name = "SHP_CART_CODE_IDX", columnList = "SHP_CART_CODE"), @Index(name = "SHP_CART_CUSTOMER_IDX", columnList = "CUSTOMER_ID")})
+@Table(name = "SHOPPING_CART", indexes= { @Index(name = "SHP_CART_CODE_IDX", columnList = "SHP_CART_CODE"), @Index(name = "SHP_CART_CUSTOMER_IDX", columnList = "CUSTOMER_ID"), @Index(name = "SHP_CART_CUST_TYPE_IDX", columnList = "CUSTOMER_ID, CART_TYPE")})
 public class ShoppingCart extends SalesManagerEntity<Long, ShoppingCart> implements Auditable{
 
 	
@@ -74,7 +76,11 @@ public class ShoppingCart extends SalesManagerEntity<Long, ShoppingCart> impleme
 	
 	@Column(name = "CUSTOMER_ID", nullable = true)
 	private Long customerId;
-	
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "CART_TYPE", nullable = false, length = 10)
+	private ShoppingCartType type = ShoppingCartType.CART;
+
 	@Column(name = "ORDER_ID", nullable = true)
 	private Long orderId;
 
@@ -187,5 +193,12 @@ public class ShoppingCart extends SalesManagerEntity<Long, ShoppingCart> impleme
 		this.orderId = orderId;
 	}
 
+	public ShoppingCartType getType() {
+		return type;
+	}
+
+	public void setType(ShoppingCartType type) {
+		this.type = type;
+	}
 
 }

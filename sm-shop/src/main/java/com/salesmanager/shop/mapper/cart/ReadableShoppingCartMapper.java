@@ -40,6 +40,7 @@ import com.salesmanager.core.model.order.OrderSummary;
 import com.salesmanager.core.model.order.OrderTotalSummary;
 import com.salesmanager.core.model.reference.language.Language;
 import com.salesmanager.core.model.shoppingcart.ShoppingCart;
+import com.salesmanager.core.model.shoppingcart.ShoppingCartType;
 import com.salesmanager.shop.mapper.Mapper;
 import com.salesmanager.shop.mapper.catalog.ReadableMinimalProductMapper;
 import com.salesmanager.shop.mapper.catalog.ReadableProductVariationMapper;
@@ -104,6 +105,7 @@ public class ReadableShoppingCartMapper implements Mapper<ShoppingCart, Readable
 		Validate.notNull(language, "Language cannot be null");
 
 		destination.setCode(source.getShoppingCartCode());
+		destination.setType(source.getType() != null ? source.getType().name().toLowerCase() : "cart");
 		int cartQuantity = 0;
 
 		destination.setCustomer(source.getCustomerId());
@@ -246,43 +248,39 @@ public class ReadableShoppingCartMapper implements Mapper<ShoppingCart, Readable
 				}
 			}
 
-			// Calculate totals using shoppingCartService
-			// OrderSummary contains ShoppingCart items
+			// Calculate totals using shoppingCartService — skip for WISHLIST carts
+			if (source.getType() == null || source.getType() == ShoppingCartType.CART) {
+				OrderSummary summary = new OrderSummary();
+				List<com.salesmanager.core.model.shoppingcart.ShoppingCartItem> productsList = new ArrayList<com.salesmanager.core.model.shoppingcart.ShoppingCartItem>();
+				productsList.addAll(source.getLineItems());
+				summary.setProducts(productsList);
 
-			OrderSummary summary = new OrderSummary();
-			List<com.salesmanager.core.model.shoppingcart.ShoppingCartItem> productsList = new ArrayList<com.salesmanager.core.model.shoppingcart.ShoppingCartItem>();
-			productsList.addAll(source.getLineItems());
-			summary.setProducts(productsList);
+				OrderTotalSummary orderSummary = shoppingCartCalculationService.calculate(source, store, language);
 
-			// OrdetTotalSummary contains all calculations
+				if (CollectionUtils.isNotEmpty(orderSummary.getTotals())) {
 
-			OrderTotalSummary orderSummary = shoppingCartCalculationService.calculate(source, store, language);
+					if (orderSummary.getTotals().stream()
+							.filter(t -> Constants.OT_DISCOUNT_TITLE.equals(t.getOrderTotalCode())).count() == 0) {
+						destination.setPromoCode(null);
+					}
 
-			if (CollectionUtils.isNotEmpty(orderSummary.getTotals())) {
-
-				if (orderSummary.getTotals().stream()
-						.filter(t -> Constants.OT_DISCOUNT_TITLE.equals(t.getOrderTotalCode())).count() == 0) {
-					// no promo coupon applied
-					destination.setPromoCode(null);
-
+					List<ReadableOrderTotal> totals = new ArrayList<ReadableOrderTotal>();
+					for (com.salesmanager.core.model.order.OrderTotal t : orderSummary.getTotals()) {
+						ReadableOrderTotal total = new ReadableOrderTotal();
+						total.setCode(t.getOrderTotalCode());
+						total.setValue(t.getValue());
+						total.setText(t.getText());
+						totals.add(total);
+					}
+					destination.setTotals(totals);
 				}
 
-				List<ReadableOrderTotal> totals = new ArrayList<ReadableOrderTotal>();
-				for (com.salesmanager.core.model.order.OrderTotal t : orderSummary.getTotals()) {
-					ReadableOrderTotal total = new ReadableOrderTotal();
-					total.setCode(t.getOrderTotalCode());
-					total.setValue(t.getValue());
-					total.setText(t.getText());
-					totals.add(total);
-				}
-				destination.setTotals(totals);
+				destination.setSubtotal(orderSummary.getSubTotal());
+				destination.setDisplaySubTotal(pricingService.getDisplayAmount(orderSummary.getSubTotal(), store));
+
+				destination.setTotal(orderSummary.getTotal());
+				destination.setDisplayTotal(pricingService.getDisplayAmount(orderSummary.getTotal(), store));
 			}
-
-			destination.setSubtotal(orderSummary.getSubTotal());
-			destination.setDisplaySubTotal(pricingService.getDisplayAmount(orderSummary.getSubTotal(), store));
-
-			destination.setTotal(orderSummary.getTotal());
-			destination.setDisplayTotal(pricingService.getDisplayAmount(orderSummary.getTotal(), store));
 
 			destination.setQuantity(cartQuantity);
 			destination.setId(source.getId());

@@ -64,4 +64,10 @@ public interface ShoppingCartService extends SalesManagerEntityService<Long, Sho
 	 */
 	void deleteShoppingCartItem(Long id);
 
+	ShoppingCart getWishlist(Customer customer, MerchantStore store) throws ServiceException;
+
+	void moveToWishlist(Long cartItemId, Customer customer, MerchantStore store) throws ServiceException;
+
+	void moveToCart(Long wishlistItemId, Customer customer, MerchantStore store) throws ServiceException;
+
 }

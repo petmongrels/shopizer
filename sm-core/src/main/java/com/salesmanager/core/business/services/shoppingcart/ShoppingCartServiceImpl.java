@@ -18,6 +18,7 @@ import com.salesmanager.core.model.shipping.ShippingProduct;
 import com.salesmanager.core.model.shoppingcart.ShoppingCart;
 import com.salesmanager.core.model.shoppingcart.ShoppingCartAttributeItem;
 import com.salesmanager.core.model.shoppingcart.ShoppingCartItem;
+import com.salesmanager.core.model.shoppingcart.ShoppingCartType;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.Validate;
 import org.slf4j.Logger;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service("shoppingCartService")
@@ -76,6 +78,7 @@ public class ShoppingCartServiceImpl extends SalesManagerEntityServiceImpl<Long,
 
 			// elect valid shopping cart
 			List<ShoppingCart> validCart = shoppingCarts.stream().filter((cart) -> cart.getOrderId() == null)
+					.filter((cart) -> cart.getType() == null || cart.getType() == ShoppingCartType.CART)
 					.collect(Collectors.toList());
 
 			ShoppingCart shoppingCart = null;
@@ -508,6 +511,135 @@ public class ShoppingCartServiceImpl extends SalesManagerEntityServiceImpl<Long,
 
 		}
 
+	}
+
+	@Override
+	@Transactional
+	public ShoppingCart getWishlist(Customer customer, MerchantStore store) throws ServiceException {
+		try {
+			List<ShoppingCart> wishlists = shoppingCartRepository.findByCustomerAndType(customer.getId(), ShoppingCartType.WISHLIST);
+
+			List<ShoppingCart> validWishlists = wishlists.stream()
+					.filter(w -> w.getMerchantStore().getId().equals(store.getId()))
+					.collect(Collectors.toList());
+
+			if (CollectionUtils.isEmpty(validWishlists)) {
+				return null;
+			}
+
+			ShoppingCart wishlist = validWishlists.get(0);
+			getPopulatedShoppingCart(wishlist, store);
+
+			if (wishlist.isObsolete()) {
+				delete(wishlist);
+				return null;
+			}
+
+			return wishlist;
+		} catch (Exception e) {
+			throw new ServiceException(e);
+		}
+	}
+
+	@Override
+	@Transactional
+	public void moveToWishlist(Long cartItemId, Customer customer, MerchantStore store) throws ServiceException {
+		try {
+			ShoppingCartItem item = shoppingCartItemRepository.findOne(cartItemId);
+			if (item == null) {
+				throw new ServiceException("Cart item not found for id [" + cartItemId + "]");
+			}
+
+			ShoppingCart cart = item.getShoppingCart();
+			if (cart.getCustomerId() == null || !cart.getCustomerId().equals(customer.getId())) {
+				throw new ServiceException("Cart item does not belong to customer [" + customer.getId() + "]");
+			}
+
+			// Get or create wishlist
+			ShoppingCart wishlist = getWishlist(customer, store);
+			if (wishlist == null) {
+				wishlist = new ShoppingCart();
+				wishlist.setShoppingCartCode(UUID.randomUUID().toString());
+				wishlist.setType(ShoppingCartType.WISHLIST);
+				wishlist.setCustomerId(customer.getId());
+				wishlist.setMerchantStore(store);
+			}
+
+			// Create new item in wishlist
+			Product product = productService.getBySku(item.getSku(), store, store.getDefaultLanguage());
+			if (product == null) {
+				throw new ServiceException("Product not found for sku [" + item.getSku() + "]");
+			}
+
+			ShoppingCartItem wishlistItem = populateShoppingCartItem(product, store);
+			wishlistItem.setQuantity(item.getQuantity());
+			wishlistItem.setVariant(item.getVariant());
+			wishlistItem.setShoppingCart(wishlist);
+			wishlist.getLineItems().add(wishlistItem);
+			saveOrUpdate(wishlist);
+
+			// Remove item from cart - must remove from collection first to prevent
+			// cascade re-persisting the deleted entity
+			cart.getLineItems().remove(item);
+			saveOrUpdate(cart);
+			deleteShoppingCartItem(cartItemId);
+		} catch (ServiceException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new ServiceException(e);
+		}
+	}
+
+	@Override
+	@Transactional
+	public void moveToCart(Long wishlistItemId, Customer customer, MerchantStore store) throws ServiceException {
+		try {
+			ShoppingCartItem item = shoppingCartItemRepository.findOne(wishlistItemId);
+			if (item == null) {
+				throw new ServiceException("Wishlist item not found for id [" + wishlistItemId + "]");
+			}
+
+			ShoppingCart wishlist = item.getShoppingCart();
+			if (wishlist.getCustomerId() == null || !wishlist.getCustomerId().equals(customer.getId())) {
+				throw new ServiceException("Wishlist item does not belong to customer [" + customer.getId() + "]");
+			}
+			if (wishlist.getType() != ShoppingCartType.WISHLIST) {
+				throw new ServiceException("Item [" + wishlistItemId + "] is not in a wishlist");
+			}
+
+			// Get or create cart
+			ShoppingCart cart = getShoppingCart(customer, store);
+			if (cart == null) {
+				cart = new ShoppingCart();
+				cart.setShoppingCartCode(UUID.randomUUID().toString());
+				cart.setType(ShoppingCartType.CART);
+				cart.setCustomerId(customer.getId());
+				cart.setMerchantStore(store);
+			}
+
+			// Create new item in cart
+			Product product = productService.getBySku(item.getSku(), store, store.getDefaultLanguage());
+			if (product == null) {
+				throw new ServiceException("Product not found for sku [" + item.getSku() + "]");
+			}
+
+			ShoppingCartItem cartItem = populateShoppingCartItem(product, store);
+			cartItem.setQuantity(item.getQuantity());
+			cartItem.setVariant(item.getVariant());
+			cartItem.setShoppingCart(cart);
+			cart.getLineItems().add(cartItem);
+			saveOrUpdate(cart);
+
+			// Remove item from wishlist - must remove from collection first to prevent
+			// cascade re-persisting the deleted entity
+			wishlist.getLineItems().remove(item);
+			saveOrUpdate(wishlist);
+			deleteShoppingCartItem(wishlistItemId);
+		} catch (ServiceException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new ServiceException(e);
+		}
 	}
 
 }
